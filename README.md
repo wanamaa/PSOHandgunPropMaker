@@ -1,389 +1,471 @@
-# PSO Blaster — Adafruit Feather RP2040 Prop-Maker
+# PSO Handgun — RP2040 Prop-Maker
 
-Arduino firmware for a prop-maker blaster using the Adafruit Feather RP2040 Prop-Maker.
+An Arduino prop project for the Adafruit Feather RP2040 Prop-Maker.
 
-- **Author:** AW Labs
-- **Firmware revision:** 1.2.1
-- **Platform:** Adafruit Feather RP2040 Prop-Maker
-- **Audio architecture:** RP2040 dual core
-- **Supported profiles:** Handgun, Mechgun, and Rifle
+This prop combines NeoPixel lighting effects, trigger-controlled weapon sounds, charging behavior, mode controls, and accelerometer reporting.
 
-> **Note:** The supplied sketch is not self-contained. Building it requires a custom `PSOEffects` library and six generated sound headers. See [Required project files](#required-project-files).
 
-## Overview
+The sketch uses the RP2040's two cores:
 
-The prop combines an eight-pixel NeoPixel strand, a single barrel NeoPixel, an I2S audio amplifier, two buttons, and a report-only LIS3DH accelerometer.
+- **Core 0** handles buttons, NeoPixels, effects, and accelerometer reporting.
+- **Core 1** services the PSOAudio queue and plays audio through I2S.
 
-Core 0 handles buttons, LEDs, color modes, and gameplay state. Core 1 handles the I2S audio queue. A monotonic blast-start counter is used to synchronize the muzzle flash with the moment a shot sound actually begins playing.
+Sketch revision: **1.3.0**
 
 ## Features
 
-- Power-on chime
+- Power-on sound
 - Eight-pixel breathing and color-cycle effect
-- Single-pixel white muzzle flash
-- Handgun, Mechgun, and Rifle sound profiles
-- One- or three-flash muzzle bursts
-- Tap-fire and charged-shot behavior
-- Mode/swap button with audio playback
-- Accent-color mode switching
-- Immediate interruption and queue clearing on new input
-- I2S audio synchronized with muzzle effects
-- LIS3DH accelerometer reporting over the serial monitor
-- Software debouncing for the mode button
+- Single NeoPixel barrel/muzzle light
+- Handgun, mech gun, and rifle weapon configurations
+- Quick-trigger shot
+- Hold-to-charge power-up followed by a shot
+- Mode button with sound and color-mode changes
+- Interruptible audio playback
+- Audio-synchronized muzzle flashes
+- LIS3DH accelerometer reporting over Serial
+- Shared audio and effects implemented in reusable libraries
 
-## Weapon profiles
+> [!IMPORTANT]
+> The RP2040 version requires both `setup1()` and `loop1()`. `loop1()` must continuously call `PSOAudio::serviceAudioQueue()`.
 
-Select a profile by changing `WEAPON_TYPE` near the top of the sketch:
+## Project structure
 
-```cpp
-#define WEAPON_TYPE WEAPON_HANDGUN
+A suitable overall repository layout is:
+
+```text
+Project/
+├── README.md
+├── libraries/
+│   ├── PSOAudio/
+│   │   ├── README.md
+│   │   ├── library.properties
+│   │   └── src/
+│   │       ├── PSOAudio.h
+│   │       ├── PSOAudio.cpp
+│   │       └── Sounds/
+│   └── PSOEffects/
+│       ├── README.md
+│       ├── library.properties
+│       └── src/
+│           └── PSOEffects.h
+└── props/
+    └── propmaker_blaster_v1/
+        ├── propmaker_blaster_v1.ino
+        └── README.md
 ```
 
-| Setting | Sound | Muzzle flashes |
-|---|---|---:|
-| `WEAPON_HANDGUN` | `blast.h` | 1 |
-| `WEAPON_MECHGUN` | `mechBlast.h` | 3 |
-| `WEAPON_RIFLE` | `rifleBlast.h` | 1 |
+Custom libraries:
 
-All profiles use `powerup.h` for a charged shot. The profile is selected at compile time; it is not changed at runtime.
+- [PSOAudio](../../libraries/PSOAudio/) — sound assets, queue handling, playback, and synchronization counters
+- [PSOEffects](../../libraries/PSOEffects/) — NeoPixel breathing and color-cycle effects
 
 ## Hardware
 
 ### Required components
 
 - Adafruit Feather RP2040 Prop-Maker
-- 8-pixel GRB NeoPixel strand
-- 1-pixel GRB NeoPixel for the muzzle
+- Eight external NeoPixels on the main-strip connection
+- One external NeoPixel for the barrel light
+- Trigger button connected to the external button input
+- Mode button
 - LIS3DH accelerometer
-- I2S-compatible audio amplifier connected to the Prop-Maker audio interface
-- Trigger button connected to `PIN_EXTERNAL_BUTTON`
-- Mode/swap button connected to GPIO 9
-- Suitable regulated power for the NeoPixels
-- Common ground between the Feather, LEDs, and audio hardware
+- Compatible I2S audio amplifier and speaker
+- Prop-Maker wiring, power, and connections
 
-### Connections
+### Pin assignments
 
-| Function | Connection |
-|---|---|
-| Main NeoPixel data | `PIN_EXTERNAL_NEOPIXELS` from the Prop-Maker board variant |
-| Barrel NeoPixel data | GPIO 10 |
-| Mode button | GPIO 9 and ground |
-| Trigger | `PIN_EXTERNAL_BUTTON` and ground |
-| External power rail | `PIN_EXTERNAL_POWER`; enabled by firmware |
-| Audio clock/data | `PIN_I2S_BIT_CLOCK` and `PIN_I2S_DATA` |
-| Accelerometer | Prop-Maker I2C bus, normally at address `0x18` |
+| Function | Connection | Notes |
+|---|---|---|
+| Main NeoPixel strip | `PIN_EXTERNAL_NEOPIXELS` | Must contain eight pixels |
+| Barrel NeoPixel | GPIO 10 | Defined by `PIN_BARREL_LED` |
+| Mode button | GPIO 9 | Defined by `PIN_MODE_BUTTON`; active-low with internal pull-up |
+| Trigger | `PIN_EXTERNAL_BUTTON` | Active-low with internal pull-up |
+| External audio power | `PIN_EXTERNAL_POWER` | Board-defined pin; set active-high before playback |
+| I2S bit clock | `PIN_I2S_BIT_CLOCK` | Defined by the selected board variant |
+| I2S data | `PIN_I2S_DATA` | Defined by the selected board variant |
+| Accelerometer | I2C | Address `0x18` |
 
-Both buttons use `INPUT_PULLUP`, so an unpressed button reads `HIGH` and a pressed button reads `LOW`.
+`PIN_EXTERNAL_NEOPIXELS`, `PIN_EXTERNAL_BUTTON`, `PIN_EXTERNAL_POWER`, `PIN_I2S_BIT_CLOCK`, and `PIN_I2S_DATA` are supplied by the Prop-Maker board variant. Select the correct board in the Arduino IDE before compiling.
 
-The firmware currently attempts to initialize the LIS3DH only at I2C address `0x18`. If the sensor is configured for `0x19`, change the address passed to `lis.begin()`.
+Buttons are configured as `INPUT_PULLUP`. Connect each button between its assigned input and ground. The input reads `LOW` while pressed.
 
-## Required project files
+All external devices must share a common ground. Provide sufficient external power for the NeoPixels and amplifier.
 
-A suggested repository layout is:
+## Software requirements
+
+Install the following libraries through the Arduino Library Manager:
+
+- **Adafruit NeoPixel**
+- **Adafruit LIS3DH**
+- **Adafruit Unified Sensor**
+
+The sketch also requires the project libraries:
+
+- **PSOAudio**
+- **PSOEffects**
+
+The PSOAudio library must include all of its generated files under:
 
 ```text
-.
-├── README.md
-└── firmware/
-    └── propmaker_blaster_v1/
-        ├── propmaker_blaster_v1.ino
-        ├── PSOEffects.h
-        └── Sounds/
-            ├── power_sound.h
-            ├── swap_sound.h
-            ├── blast.h
-            ├── powerup.h
-            ├── mechBlast.h
-            └── rifleBlast.h
+PSOAudio/src/Sounds/
 ```
 
-The custom headers may instead be packaged as an Arduino library, but they must be available on the compiler's include path.
+Do not install PSOAudio or PSOEffects with an extra nested directory. The required structure begins with:
 
-### Custom effects library
-
-`PSOEffects.h` must provide:
-
-- `psoUpdateBreathingColor(...)`
-- `PSO_NUM_MODES`
-- `PSO_MODE_NAMES`
-
-The effect library owns the color palettes, breathing calculation, and mode names.
-
-### Generated sound headers
-
-The sketch expects each audio header to define the following symbols:
-
-| Header | Required symbols |
-|---|---|
-| `power_sound.h` | `POWER_SOUND`, `POWER_SOUND_LENGTH`, `POWER_SOUND_SAMPLE_RATE` |
-| `swap_sound.h` | `SWAP_SOUND`, `SWAP_SOUND_LENGTH`, `SWAP_SOUND_SAMPLE_RATE` |
-| `blast.h` | `BLAST_SOUND`, `BLAST_SOUND_LENGTH`, `BLAST_SOUND_SAMPLE_RATE` |
-| `powerup.h` | `POWERUP_SOUND`, `POWERUP_SOUND_LENGTH`, `POWERUP_SOUND_SAMPLE_RATE` |
-| `mechBlast.h` | `MECHBLAST_SOUND`, `MECHBLAST_SOUND_LENGTH`, `MECHBLAST_SAMPLE_RATE` |
-| `rifleBlast.h` | `RIFLEBLAST_SOUND`, `RIFLEBLAST_LENGTH`, `RIFLEBLAST_SAMPLE_RATE` |
-
-If the WAV conversion script generates different names, update the include or `sound[]` entries in the sketch accordingly. Header names are case-sensitive on Linux and macOS build environments.
-
-## Audio requirements
-
-The playback code assumes that each generated audio array contains:
-
-- 8-bit unsigned PCM
-- Mono audio
-- Unsigned silence centered at `128`
-- A matching sample-rate constant
-- A length measured in sample bytes
-
-During playback, the firmware converts each unsigned byte to signed 16-bit I2S samples:
-
-```cpp
-int16_t centered = static_cast<int16_t>(data[i]) - 128;
+```text
+libraries/
+├── PSOAudio/
+│   ├── library.properties
+│   └── src/
+└── PSOEffects/
+    ├── library.properties
+    └── src/
 ```
 
-Do not supply signed 8-bit audio without changing this conversion. Signed audio would subtract another `128`, introducing severe clipping or DC offset.
+## Installation
 
-The same mono sample is written to both the left and right channels.
+1. Install the Arduino IDE.
+2. Install an RP2040 board package containing the **Adafruit Feather RP2040 Prop-Maker** board variant.
+3. Install Adafruit NeoPixel, Adafruit LIS3DH, and Adafruit Unified Sensor through Library Manager.
+4. Copy the complete `PSOAudio` and `PSOEffects` folders into the Arduino sketchbook libraries directory.
+5. Open `propmaker_blaster_v1.ino`.
+6. Select **Adafruit Feather RP2040 Prop-Maker** as the board.
+7. Select the RP2040's USB serial port.
+8. Compile and upload the sketch.
+9. Open Serial Monitor at **115200 baud**.
 
-### Volume
+A typical Windows sketchbook library path is:
 
-```cpp
-const int16_t AUDIO_GAIN = 25;
+```text
+C:\Users\<username>\Documents\Arduino\libraries
 ```
 
-`25` is a conservative starting value. The theoretical maximum before clipping is approximately `256`. Increase the gain in small steps while monitoring the amplifier for distortion.
+## Controls and behavior
 
-## Required Arduino support
+### Boot sequence
 
-Install:
+1. Core 0 configures the buttons, NeoPixels, and LIS3DH.
+2. Core 1 enables `PIN_EXTERNAL_POWER`.
+3. Core 1 initializes PSOAudio using the Prop-Maker I2S pins.
+4. The sketch waits 100 ms for the amplifier and filtering circuitry to settle.
+5. `SND_POWER_ON` begins on core 1.
 
-1. Arduino IDE 2.x or an equivalent Arduino build environment
-2. Adafruit's RP2040 board package
-3. Adafruit NeoPixel
-4. Adafruit LIS3DH
-5. Adafruit Unified Sensor
-6. The I2S library/API used by the selected RP2040 core and Prop-Maker reference sketch
-7. The custom `PSOEffects` library (see PSOEffects repo)
-8. All six generated sound headers
+Keep the amplifier-enable operation and settling delay in `setup1()` before starting the boot clip.
 
-The selected board package must support the RP2040 `setup1()` and `loop1()` second-core functions and the Prop-Maker variant pin definitions.
+### Trigger behavior
 
-## Build and upload
+The trigger is active-low.
 
-1. Connect and power the Prop-Maker.
-2. Open `propmaker_blaster_v1.ino` in Arduino IDE.
-3. Select the **Adafruit Feather RP2040 Prop-Maker** board.
-4. Select the correct serial port.
-5. Confirm that all custom headers and libraries are installed.
-6. Set `WEAPON_TYPE` to the desired profile.
-7. Compile the sketch.
-8. Upload the firmware.
-9. Open the serial monitor at **115200 baud**.
+#### Quick tap
 
-The board-specific macros below must be provided by the selected Prop-Maker board variant:
+A press shorter than 500 ms is recognized when the button is released. The selected shot sound starts, and the corresponding muzzle-flash burst begins when the audio clip actually starts.
 
-```cpp
-PIN_EXTERNAL_NEOPIXELS
-PIN_EXTERNAL_BUTTON
-PIN_EXTERNAL_POWER
-PIN_I2S_BIT_CLOCK
-PIN_I2S_DATA
-```
+#### Hold to charge
 
-If these are undefined, the wrong board package or board variant is selected.
+Holding the trigger for at least 500 ms:
 
-## Controls
+1. Stops current audio and clears its pending queue.
+2. Queues the power-up sound.
+3. Queues the selected weapon shot.
+4. Plays both clips sequentially.
 
-### Power-on
-
-After boot, the firmware:
-
-1. Enables the external power rail
-2. Starts the power-on chime
-3. Initializes the LEDs and accelerometer
-4. Begins the breathing color effect
-
-### Trigger
-
-A short trigger press:
-
-- Interrupts the currently playing sound
-- Clears all queued sounds
-- Starts the selected weapon sound
-- Flashes the barrel when the shot clip actually begins
-
-Holding the trigger for `CHARGE_HOLD_MS` queues `powerup.h`, followed by the selected weapon sound. The charged shot starts at the charge threshold; it does not wait for release.
-
-Pressing the trigger or mode button during playback immediately advances the playback generation, causing the current audio clip to stop.
+The shot flash begins only after the queued shot clip starts.
 
 ### Mode button
 
 Pressing the mode button:
 
-- Interrupts the current sound
-- Clears the audio queue
-- Plays `swap_sound.h`
-- Advances to the next color mode
-- Prints the selected mode name to the serial monitor
+1. Stops current audio and clears the pending queue.
+2. Starts the swap sound.
+3. Advances to the next NeoPixel color mode.
+4. Prints the new mode name to Serial Monitor.
 
-The selected color mode resets when the device restarts.
+The mode button uses a 30 ms debounce interval.
 
-## LED timing
+### Main NeoPixel strip
 
-Default muzzle-flash settings are:
+The eight-pixel main strip runs a breathing color-cycle effect provided by PSOEffects. Main-strip rendering pauses briefly while the barrel flash is active.
+
+### Barrel NeoPixel
+
+The barrel pixel flashes white for 200 ms per shot. Consecutive flashes have a 50 ms gap after the previous flash turns off.
+
+The flash is synchronized to `PSOAudio::startCount()`, not merely to the moment a sound is placed in the queue. This prevents the light from starting if a queued clip is interrupted or never begins.
+
+### Accelerometer
+
+The LIS3DH is report-only in this revision. Its acceleration values are printed every 200 ms but do not currently control gameplay.
+
+## Weapon configuration
+
+Select the weapon at compile time near the top of the sketch:
+
+```cpp
+#define WEAPON_HANDGUN 0
+#define WEAPON_MECHGUN 1
+#define WEAPON_RIFLE   2
+
+#define WEAPON_TYPE WEAPON_HANDGUN
+```
+
+Available configurations:
+
+| Configuration | Shot sound | Muzzle flashes |
+|---|---|---:|
+| `WEAPON_HANDGUN` | `PSOAudio::SND_BLAST` | 1 |
+| `WEAPON_MECHGUN` | `PSOAudio::SND_MECH_BLAST` | 3 |
+| `WEAPON_RIFLE` | `PSOAudio::SND_RIFLE` | 1 |
+
+Changing `WEAPON_TYPE` and recompiling selects the shot sound and number of flashes.
+
+The weapon setting is not changed at runtime.
+
+## Dual-core architecture
+
+```text
+Core 0                              Core 1
+------                              ------
+setup()                             setup1()
+  Serial                              External audio power
+  Buttons                             PSOAudio::begin()
+  NeoPixels                           Power-on clip
+  LIS3DH
+
+loop()                               loop1()
+  Trigger                             PSOAudio::serviceAudioQueue()
+  Mode button                           Pop queued sound
+  Main-strip effects                    Play through I2S
+  Muzzle flashes
+  Accelerometer report
+          \                           /
+           \--- PSOAudio queue ------/
+                    |
+              Pico SDK mutex
+```
+
+Core 0 may call the PSOAudio queue API while core 1 is playing audio. PSOAudio protects its shared queue with a Pico SDK mutex.
+
+Do not:
+
+- Call `PSOAudio::serviceAudioQueue()` from both cores
+- Remove or block `loop1()`
+- Call PSOAudio queue functions from an interrupt handler
+- Replace the PSOAudio mutex with unsupported `__atomic_*`, `LDREX`/`STREX`, or `spin_lock_unsafe*` calls
+- Place long delays in `loop1()`
+
+`setup()` and `setup1()` may run concurrently, so both functions set `PIN_EXTERNAL_POWER` to its active level.
+
+## Audio synchronization
+
+PSOAudio increments a playback-start counter only after a clip has genuinely started. The sketch monitors the selected shot's counter:
+
+```cpp
+uint16_t currentShotStart =
+  PSOAudio::startCount(SHOT_SOUND);
+```
+
+When this value changes, the sketch arms a new muzzle-flash burst.
+
+This approach ensures that:
+
+- Queueing a shot does not immediately start its flash
+- A power-up clip can finish before the shot flash begins
+- An interrupted stale clip does not trigger a flash
+- Visual and audio events remain synchronized
+
+## Customization
+
+### LED count
+
+The main strip is configured for eight pixels:
+
+```cpp
+#define MAIN_PIXEL_COUNT 8
+```
+
+Change this value if using a different number of pixels.
+
+### Flash timing
 
 ```cpp
 const uint16_t BARREL_FLASH_MS = 200;
 const uint16_t BARREL_FLASH_GAP_MS = 50;
 ```
 
-Each flash remains lit for 200 ms. Subsequent flashes begin after 50 ms of darkness. A three-flash Mechgun burst therefore lasts approximately 700 ms from the start of the first flash until the end of the final flash.
+`BARREL_FLASH_MS` controls how long each flash remains on. `BARREL_FLASH_GAP_MS` controls the delay after a flash turns off before the next flash may begin.
 
-The main strip rendering is paused while the barrel pixel is lit. It can continue rendering during the dark gap between flashes.
-
-## Audio and core architecture
-
-### Core 0: controls and effects
-
-Core 0 is responsible for:
-
-- Reading the trigger and mode button
-- Updating the color mode
-- Rendering the main NeoPixel strip
-- Scheduling muzzle flashes
-- Monitoring the accelerometer
-- Producing audio queue events
-
-### Core 1: I2S playback
-
-Core 1 is responsible for:
-
-- Consuming sound IDs from the circular queue
-- Starting the I2S interface
-- Converting unsigned 8-bit samples to signed 16-bit samples
-- Writing mono audio to both channels
-- Stopping playback when a new input interrupts it
-
-The queue contains eight slots, with one slot reserved to distinguish full from empty, allowing seven queued entries.
-
-### Shot synchronization
-
-`blastStartCount` is incremented by core 1 immediately before a new shot clip begins. Core 0 watches this counter and starts the muzzle-flash sequence only when the sound genuinely starts. This prevents the LED from firing for a sound that was queued and then interrupted before playback.
-
-### Playback interruption
-
-`playGeneration` is incremented whenever the trigger or mode button requests an interruption. Core 1 checks this value while processing samples and stops the current clip as soon as it changes.
-
-## Configuration reference
-
-| Setting | Default | Purpose |
-|---|---:|---|
-| `WEAPON_TYPE` | `WEAPON_HANDGUN` | Selects the weapon profile |
-| `PIN_MODE_BUTTON` | `9` | Mode/swap button GPIO |
-| `PIN_BARREL_LED` | `10` | Barrel NeoPixel GPIO |
-| `MAIN_PIXEL_COUNT` | `8` | Main strip pixel count |
-| `AUDIO_GAIN` | `25` | I2S sample gain |
-| `BARREL_FLASH_MS` | `200` | Duration of each flash |
-| `BARREL_FLASH_GAP_MS` | `50` | Dark gap between flashes |
-| `CHARGE_HOLD_MS` | `500` | Hold time for a charged shot |
-| `DEBOUNCE_MS` | `30` | Mode-button debounce interval |
-
-Pixel order and timing are configured as:
+### Trigger threshold
 
 ```cpp
-NEO_GRB + NEO_KHZ800
+const uint16_t CHARGE_HOLD_MS = 500;
 ```
 
-If a strip uses a different pixel order or protocol, update both `Adafruit_NeoPixel` constructors.
+Change this to alter how long the trigger must be held before the charge sequence starts.
 
-## Serial output
+### Button debounce
 
-The serial monitor runs at 115200 baud. Example output includes:
+```cpp
+const uint16_t DEBOUNCE_MS = 30;
+```
+
+This value applies to the mode button.
+
+### Initial color mode
+
+```cpp
+uint8_t currentMode = 0;
+```
+
+Mode zero is selected on boot. Additional modes are defined by PSOEffects through `PSO_NUM_MODES` and `PSO_MODE_NAMES`.
+
+### Accelerometer reporting
+
+```cpp
+const uint16_t REPORT_INTERVAL_MS = 200;
+```
+
+This controls how frequently acceleration values are printed to Serial Monitor.
+
+## Serial Monitor
+
+Open Serial Monitor at 115200 baud.
+
+Expected output includes:
 
 ```text
 LIS3DH online
 Color mode -> <mode name>
-Accel X: 0.12  Y: 9.74  Z: -0.35 m/s^2
+Accel X: ...  Y: ...  Z: ... m/s^2
 ```
 
-Acceleration values are reported in `m/s²`. The accelerometer is diagnostic only and does not currently alter gameplay or LED behavior.
+If the accelerometer does not initialize:
+
+```text
+Couldn't start LIS3DH - check wiring/address
+```
+
+The example expects the LIS3DH I2C address to be `0x18`.
+
+## Testing checklist
+
+After uploading, verify the following:
+
+1. The power-on sound plays after startup.
+2. The eight-pixel main strip displays a breathing color effect.
+3. A short trigger press produces one shot sound and muzzle flash.
+4. Holding the trigger for 500 ms plays the power-up and then the shot.
+5. The mech gun configuration produces three flashes.
+6. The rifle configuration uses the rifle sound.
+7. The mode button plays the swap sound and changes the main-strip mode.
+8. Serial Monitor displays acceleration values every 200 ms.
+9. Pressing the mode button or starting another charge action interrupts current audio correctly.
 
 ## Troubleshooting
 
-### Compilation fails on missing board pins
-
-If `PIN_EXTERNAL_NEOPIXELS`, `PIN_EXTERNAL_BUTTON`, or the I2S pins are undefined, select the Adafruit Feather RP2040 Prop-Maker board and install the matching board package.
-
-### Missing header or sound symbol errors
+### The sketch compiles but freezes
 
 Confirm that:
 
-- `PSOEffects.h` is visible to the compiler
-- All files under `Sounds/` are present
-- The generated symbol names match the `sound[]` table
-- Header capitalization matches the filenames
+- `setup1()` and `loop1()` are present
+- `loop1()` continuously calls `PSOAudio::serviceAudioQueue()`
+- PSOAudio uses the Pico SDK mutex
+- The current PSOAudio source no longer contains the failed `__atomic_*`, `LDREX`/`STREX`, or `spin_lock_unsafe*` implementation
+- Only one copy of PSOAudio is installed
+- No PSOAudio queue API is called from an ISR
 
-### LEDs are dim or unstable
+The RP2040 lock implementation should use:
 
-- Use a power supply sized for the NeoPixels
-- Confirm that the data pin reaches the first pixel's DIN connection
-- Verify common ground
-- Check the 800 kHz and GRB settings
-- Do not power a larger strip through an unspecified GPIO
+```cpp
+#include <pico/mutex.h>
 
-### Barrel LED flashes but there is no sound
+mutex_enter_blocking(&queueMutex);
+mutex_exit(&queueMutex);
+```
 
-Check:
+### No sound on boot
 
-- I2S BCLK and DATA wiring
-- Amplifier power and mute/enable pin
-- Common ground
-- Audio sample format
-- `AUDIO_GAIN`
-- Whether the audio header contains unsigned 8-bit PCM
+Check the following:
 
-### Sound plays but the barrel does not flash
+1. The correct Prop-Maker board variant is selected.
+2. `PSOAudio::begin()` is called in `setup1()`.
+3. `PIN_EXTERNAL_POWER` is set `HIGH` before playback.
+4. The 100 ms amplifier settling delay remains in `setup1()`.
+5. `loop1()` continuously services the audio queue.
+6. The I2S clock and data connections match the board variant.
+7. The amplifier is powered and not muted.
+8. The amplifier and Prop-Maker share a common ground.
+9. The selected sound header has valid sample data and metadata.
 
-Confirm that:
+A useful diagnostic is:
+
+```cpp
+Serial.println(
+  PSOAudio::startCount(PSOAudio::SND_POWER_ON)
+);
+```
+
+If the counter does not increase, the boot clip has not started. If it increases but no sound is heard, check the amplifier, I2S wiring, power, grounding, and volume.
+
+### Trigger freezes but boot sound works
+
+Make sure the installed `PSOAudio.cpp` is the version using the Pico SDK mutex. Reinstall the complete PSOAudio library, restart the Arduino IDE, and compile again.
+
+### Barrel LED does not flash
+
+The flash is tied to the audio playback-start counter. Confirm that the selected shot sound is actually beginning.
+
+Also verify:
 
 - The barrel pixel is connected to GPIO 10
-- The selected sound is compiled as `SHOT_SOUND`
-- The audio clip is long enough for core 0 to observe `blastStartCount`
-- The LED library configuration matches the pixel
+- The pixel has adequate power
+- The pixel and board share a common ground
+- `SHOT_FLASH_COUNT` is greater than zero
 
-### Accelerometer is not detected
+### No main-strip animation
 
-The current code only checks address `0x18`. Change the `lis.begin()` argument to `0x19` if the board is configured for the alternate address.
+Check that:
 
-### One trigger press produces multiple shots
+- `MAIN_PIXEL_COUNT` matches the installed strip
+- The strip is connected to `PIN_EXTERNAL_NEOPIXELS`
+- The external NeoPixels have adequate power
+- PSOEffects is installed and included
 
-The trigger uses edge detection but does not have software debouncing. Check for contact bounce, a noisy connection, or an unsuitable mechanical switch.
+### Mode button does nothing
+
+The mode button uses an internal pull-up and must connect GPIO 9 to ground. Check the debounce setting and confirm that GPIO 9 is not being used by another peripheral.
+
+### LIS3DH is not detected
+
+Confirm that:
+
+- The LIS3DH is connected to the correct I2C pins
+- The device has a common ground with the Prop-Maker
+- The I2C address is `0x18`
+- The accelerometer power and logic levels are compatible with the board
+
+### Arduino continues compiling old library code
+
+After updating a library:
+
+1. Save all source files.
+2. Close the Arduino IDE.
+3. Reopen the IDE.
+4. Compile again.
+5. Delete the generated build-cache directory shown in the compiler output if necessary.
+
+Also check for duplicate PSOAudio installations in the active sketchbook libraries directory.
 
 ## Revision history
 
-### 1.2.1 — 2026-09-13
-
-- Combined LED and sound effects into `PSOEffects`
-
-### 1.2.0 — 2026-09-12
-
-- Added Rifle weapon profile and `rifleBlast.h`
-
-### 1.1.0 — 2026-09-11
-
-- Added weapon-profile selection
-- Added Mechgun profile
-- Corrected muzzle-flash timing race
-- Added playback interruption
-- Disabled stacked sound playback
-
-### 1.0.0 — 2026-09-07
-
-- Initial handgun-prop release
-
-## Credits
-
-Firmware by AW Labs, based on Adafruit's Prop-Maker demo sketch for the board wiring and dual-core audio reference.
+| Revision | Changes |
+|---|---|
+| 1.3.0 | Moved sound assets, audio queue, and I2S playback into PSOAudio |
+| 1.2.1 | Combined sound and LED effects into PSOEffects |
+| 1.2.0 | Added rifle weapon support and `rifleBlast.h` |
+| 1.1.0 | Added `WEAPON_TYPE`, corrected the muzzle-flash race, added interruptible audio, and disabled automatic sound stacking |
+| 1.0.0 | Initial release |
 
 ## License
 
-No license was included with the supplied source. Add a `LICENSE` file before public distribution.
+MIT
