@@ -113,6 +113,8 @@ Custom libraries:
 - 8Ω 2W speaker
 - Prop-Maker wiring, power, and connections
 
+The Instructables link in the [Build Instructions](#build-instructions) section has links to example parts.
+
 ### Pin assignments
 
 | Function | Connection | Notes |
