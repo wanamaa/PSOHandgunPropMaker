@@ -435,15 +435,6 @@ Check that:
 
 The mode button uses an internal pull-up and must connect GPIO 9 to ground. Check the debounce setting and confirm that GPIO 9 is not being used by another peripheral.
 
-### LIS3DH is not detected
-
-Confirm that:
-
-- The LIS3DH is connected to the correct I2C pins
-- The device has a common ground with the Prop-Maker
-- The I2C address is `0x18`
-- The accelerometer power and logic levels are compatible with the board
-
 ### Arduino continues compiling old library code
 
 After updating a library:
