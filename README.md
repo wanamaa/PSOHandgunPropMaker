@@ -194,7 +194,7 @@ The flash is synchronized to `PSOAudio::startCount()`, not merely to the moment 
 
 ### Accelerometer
 
-The LIS3DH is report-only in this revision. Its acceleration values are printed every 200 ms but do not currently control gameplay.
+The LIS3DH is report-only in this revision. Its acceleration values are printed every 200 ms but do not control any effects.
 
 ## Weapon configuration
 
