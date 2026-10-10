@@ -4,6 +4,7 @@ An Arduino prop project for the Adafruit Feather RP2040 Prop-Maker.
 
 This prop combines NeoPixel lighting effects, trigger-controlled weapon sounds, charging behavior, mode controls, and accelerometer reporting.
 
+![PSOHandgunRender](./images/stylish_pic.webp)
 
 The sketch uses the RP2040's two cores:
 
@@ -183,6 +184,14 @@ C:\Users\<username>\Documents\Arduino\libraries
 ## Build Instructions
 
 The most up-to-date build instructions can be found here: [Instructables](https://www.instructables.com/PSO-Blaster-Cosplay/)
+
+Fritzing wiring diagram:
+
+![fritzing](./images/fritzing.webp)
+
+Proper Electrical schematic:
+
+![schematic](./images/schematic.webp)
 
 ## Controls and behavior
 
