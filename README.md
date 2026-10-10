@@ -23,7 +23,7 @@ Sketch revision: **1.3.0**
 - Mode button with sound and color-mode changes
 - Interruptible audio playback
 - Audio-synchronized muzzle flashes
-- LIS3DH accelerometer reporting over Serial
+- LIS3DH accelerometer reporting over Serial (built into the Prop Maker - was using for test purposes)
 - Shared audio and effects implemented in reusable libraries
 
 > [!IMPORTANT]
@@ -69,8 +69,7 @@ Custom libraries:
 - One external NeoPixel for the barrel light
 - Trigger button connected to the external button input
 - Mode button
-- LIS3DH accelerometer
-- Compatible I2S audio amplifier and speaker
+- 8Ω 2W speaker
 - Prop-Maker wiring, power, and connections
 
 ### Pin assignments
@@ -392,10 +391,7 @@ Check the following:
 3. `PIN_EXTERNAL_POWER` is set `HIGH` before playback.
 4. The 100 ms amplifier settling delay remains in `setup1()`.
 5. `loop1()` continuously services the audio queue.
-6. The I2S clock and data connections match the board variant.
-7. The amplifier is powered and not muted.
-8. The amplifier and Prop-Maker share a common ground.
-9. The selected sound header has valid sample data and metadata.
+6. The selected sound header has valid sample data and metadata.
 
 A useful diagnostic is:
 
