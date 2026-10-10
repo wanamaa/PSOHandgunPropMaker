@@ -12,6 +12,46 @@ The sketch uses the RP2040's two cores:
 
 Sketch revision: **1.3.0**
 
+## Table of contents
+
+- [Features](#features)
+- [Project structure](#project-structure)
+- [Hardware](#hardware)
+  - [Required components](#required-components)
+  - [Pin assignments](#pin-assignments)
+- [Software requirements](#software-requirements)
+- [Installation](#installation)
+- [Build Instructions](#build-instructions)
+- [Controls and behavior](#controls-and-behavior)
+  - [Boot sequence](#boot-sequence)
+  - [Trigger behavior](#trigger-behavior)
+  - [Mode button](#mode-button)
+  - [Main NeoPixel strip](#main-neopixel-strip)
+  - [Barrel NeoPixel](#barrel-neopixel)
+  - [Accelerometer](#accelerometer)
+- [Weapon configuration](#weapon-configuration)
+- [Dual-core architecture](#dual-core-architecture)
+- [Audio synchronization](#audio-synchronization)
+- [Customization](#customization)
+  - [LED count](#led-count)
+  - [Flash timing](#flash-timing)
+  - [Trigger threshold](#trigger-threshold)
+  - [Button debounce](#button-debounce)
+  - [Initial color mode](#initial-color-mode)
+  - [Accelerometer reporting](#accelerometer-reporting)
+- [Serial Monitor](#serial-monitor)
+- [Testing checklist](#testing-checklist)
+- [Troubleshooting](#troubleshooting)
+  - [The sketch compiles but freezes](#the-sketch-compiles-but-freezes)
+  - [No sound on boot](#no-sound-on-boot)
+  - [Trigger freezes but boot sound works](#trigger-freezes-but-boot-sound-works)
+  - [Barrel LED does not flash](#barrel-led-does-not-flash)
+  - [No main-strip animation](#no-main-strip-animation)
+  - [Mode button does nothing](#mode-button-does-nothing)
+  - [Arduino continues compiling old library code](#arduino-continues-compiling-old-library-code)
+- [Revision history](#revision-history)
+- [License](#license)
+
 ## Features
 
 - Power-on sound
@@ -139,6 +179,10 @@ A typical Windows sketchbook library path is:
 ```text
 C:\Users\<username>\Documents\Arduino\libraries
 ```
+
+## Build Instructions
+
+The most up-to-date build instructions can be found here: [Instructables](https://www.instructables.com/PSO-Blaster-Cosplay/)
 
 ## Controls and behavior
 
